@@ -1,6 +1,7 @@
 import { MODULE_BY_KEY } from '@/data/modules'
 import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
-import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
+import { runCatalogAction, verifyCatalogConsistency } from './catalog-service'
+import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult, VersionedRow } from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
 const NEGATIVE_ACTIONS = ['撤销', '作废', '拒绝', '驳回', '停用', '忽略', '下线', '回滚']
@@ -28,7 +29,17 @@ export function listEntries(key: string, filters: Record<string, string> = {}): 
   return { items: matched, total: matched.length, page: 1, size: matched.length }
 }
 
-export function runAction(key: string, id: number, action: string): ActionResult {
+export function runAction(
+  key: string,
+  id: number,
+  action: string,
+  expectedRevision?: number,
+): ActionResult {
+  // 数据目录走独立领域服务：单向状态机、元数据同步、历史版本与事务都在那条链路里收口。
+  if (key === 'catalog') {
+    return runCatalogAction(id, action, expectedRevision)
+  }
+
   const meta = moduleMeta(key)
   const target = meta.actionTargets[action]
   if (!target) {
@@ -39,16 +50,38 @@ export function runAction(key: string, id: number, action: string): ActionResult
   if (index < 0) {
     return { ok: false, message: `没有找到编号为 ${id} 的${meta.entity}` }
   }
-  const current = String(rows[index].status)
-  if (current === target) {
+  const current = rows[index] as VersionedRow
+  const currentStatus = String(current.status)
+  if (currentStatus === target) {
     return { ok: false, message: `${meta.entity}已经是「${target}」，不用重复操作` }
   }
+
+  // 配置了状态机的模块同样按允许动作收口；未配置的模块沿用旧的目标态流转口径。
+  if (meta.transitions) {
+    const allowed = meta.transitions[currentStatus] ?? []
+    if (!allowed.includes(action)) {
+      return {
+        ok: false,
+        message: `${meta.entity}（编号 ${id}，当前状态「${currentStatus}」）动作被拒：该状态不允许执行「${action}」`,
+      }
+    }
+  }
+
+  const revision = Number(current._revision ?? 1)
+  if (typeof expectedRevision === 'number' && expectedRevision !== revision) {
+    return {
+      ok: false,
+      message: `${meta.entity}（编号 ${id}）已被更新到修订号 ${revision}，你基于修订号 ${expectedRevision} 的提交冲突，本次未写入`,
+    }
+  }
+
   const lastStatus = meta.statuses[meta.statuses.length - 1]
-  const updated: EntryRow = {
-    ...rows[index],
+  const updated: VersionedRow = {
+    ...current,
     status: target,
     pending: target !== lastStatus,
     abnormal: NEGATIVE_ACTIONS.some((verb) => action.startsWith(verb)),
+    _revision: revision + 1,
   }
   const next = [...rows]
   next[index] = updated
@@ -63,12 +96,22 @@ export function resetModule(key: string): PageResult {
 
 export function exportEntries(key: string): { filename: string; content: string } {
   const meta = moduleMeta(key)
+
+  // 导出前先做一致性核对：清单、元数据、历史版本对不上时明确报错，不导出互相矛盾的旧文件。
+  if (key === 'catalog') {
+    const report = verifyCatalogConsistency()
+    if (!report.ok) {
+      throw new Error(`编目清单导出中止，数据一致性校验未通过：${report.issues.join('；')}`)
+    }
+  }
+
   const header = ['编号', ...meta.fields, '当前状态']
   const lines = [header.join(',')]
   for (const row of listRows(key)) {
+    // 内部字段（_revision 等）一律不进导出，导出列与页面列严格同一份 fields 定义。
     lines.push([row.id, ...meta.fields.map((field) => row[field] ?? ''), row.status].join(','))
   }
-  return { filename: `${meta.name}-清单.csv`, content: `\uFEFF${lines.join('\n')}` }
+  return { filename: `${meta.name}-清单.csv`, content: `﻿${lines.join('\n')}` }
 }
 
 export function downloadEntries(key: string): void {

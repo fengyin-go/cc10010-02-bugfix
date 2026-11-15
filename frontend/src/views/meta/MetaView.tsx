@@ -4,41 +4,9 @@ import { downloadEntries, listEntries, moduleMeta, runAction as applyAction } fr
 import type { EntryRow } from '@/data/types'
 
 const meta = moduleMeta('meta')
-const columns = [
-  "条目编号",
-  "对象类型",
-  "对象名称",
-  "属性键",
-  "属性值",
-  "数据来源",
-  "更新频率",
-  "版本变更"
-]
-const actions = [
-  "提交审核",
-  "生效发布",
-  "作废条目"
-]
-const statuses = [
-  "草稿",
-  "待审核",
-  "已生效",
-  "已作废"
-]
-const stats = [
-  {
-    "label": "元数据条目总数",
-    "value": 0
-  },
-  {
-    "label": "已生效条目",
-    "value": 0
-  },
-  {
-    "label": "待审核条目",
-    "value": 0
-  }
-]
+const columns = meta.fields
+const actions = meta.actions
+const statuses = meta.statuses
 
 export default function MetaView() {
   const [rows, setRows] = useState<EntryRow[]>([])
@@ -46,6 +14,16 @@ export default function MetaView() {
   const [errorMessage, setErrorMessage] = useState('')
   const [filters, setFilters] = useState<Record<string, string>>({})
   const filterFields = useMemo(() => columns.slice(0, 3), [])
+
+  const stats = useMemo(
+    () => [
+      { label: '元数据条目总数', value: rows.length },
+      { label: '已生效条目', value: rows.filter((row) => String(row.status) === '已生效').length },
+      { label: '待审核条目', value: rows.filter((row) => String(row.status) === '待审核').length },
+      { label: '已作废条目', value: rows.filter((row) => String(row.status) === '已作废').length },
+    ],
+    [rows],
+  )
 
   const reload = useCallback(() => {
     setErrorMessage('')
@@ -62,6 +40,17 @@ export default function MetaView() {
     reload()
   }, [reload])
 
+  // 目录发布/废弃会在同事务里改元数据条目，跨标签页提交后这里也要对齐，避免显示旧条目。
+  useEffect(() => {
+    function onStorage(event: StorageEvent) {
+      if (event.key === null || event.key.startsWith('lake-govern-config:')) {
+        reload()
+      }
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [reload])
+
   function runAction(action: string, row: EntryRow) {
     setErrorMessage('')
     const result = applyAction(meta.key, Number(row.id), action)
@@ -70,6 +59,15 @@ export default function MetaView() {
       return
     }
     reload()
+  }
+
+  function handleExport() {
+    try {
+      downloadEntries(meta.key)
+      setErrorMessage('')
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '元数据清单导出失败')
+    }
   }
 
   return (
@@ -83,7 +81,7 @@ export default function MetaView() {
           <button className="btn primary" type="button" onClick={() => setErrorMessage('元数据条目登记入口尚未接入审批流')}>
             登记元数据条目
           </button>
-          <button className="btn" type="button" onClick={() => downloadEntries(meta.key)}>
+          <button className="btn" type="button" onClick={handleExport}>
             导出元数据中心清单
           </button>
         </div>

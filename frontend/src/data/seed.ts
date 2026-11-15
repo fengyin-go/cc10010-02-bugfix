@@ -1,4 +1,4 @@
-import type { EntryRow } from './types'
+import type { CatalogHistoryRecord, EntryRow } from './types'
 
 // 示例数据：首次打开时播种，之后浏览器里的改动优先，重置才会回到这份。
 export const SEED_ROWS: Record<string, EntryRow[]> = {
@@ -8,6 +8,8 @@ export const SEED_ROWS: Record<string, EntryRow[]> = {
       "status": "草稿",
       "pending": true,
       "abnormal": false,
+      "_revision": 1,
+      "_baseVersion": "数据编目样例1",
       "编目编号": "CATA-0001",
       "数据集名称": "数据编目样例1",
       "存储路径": "数据编目样例1",
@@ -22,6 +24,8 @@ export const SEED_ROWS: Record<string, EntryRow[]> = {
       "status": "待审核",
       "pending": true,
       "abnormal": true,
+      "_revision": 1,
+      "_baseVersion": "数据编目样例2",
       "编目编号": "CATA-0002",
       "数据集名称": "数据编目样例2",
       "存储路径": "数据编目样例2",
@@ -36,6 +40,8 @@ export const SEED_ROWS: Record<string, EntryRow[]> = {
       "status": "已发布",
       "pending": false,
       "abnormal": false,
+      "_revision": 1,
+      "_baseVersion": "数据编目样例3",
       "编目编号": "CATA-0003",
       "数据集名称": "数据编目样例3",
       "存储路径": "数据编目样例3",
@@ -484,6 +490,24 @@ export const SEED_ROWS: Record<string, EntryRow[]> = {
       "数据来源": "元数据中心样例3",
       "更新频率": "元数据中心样例3",
       "版本变更": "元数据中心样例3"
+    },
+    {
+      // 已发布数据目录 CATA-0003 同步生成的生效属性条目，与目录版本一一对应。
+      "id": 4,
+      "status": "已生效",
+      "pending": false,
+      "abnormal": false,
+      "_catalogId": 3,
+      "_catalogVersion": "数据编目样例3",
+      "_catalogRevision": 1,
+      "条目编号": "META-CATA-0003",
+      "对象类型": "数据目录",
+      "对象名称": "数据编目样例3",
+      "属性键": "编目版本",
+      "属性值": "数据编目样例3",
+      "数据来源": "数据编目",
+      "更新频率": "随目录发布",
+      "版本变更": "数据编目样例3"
     }
   ],
   "lineage": [
@@ -795,3 +819,32 @@ export const SEED_ROWS: Record<string, EntryRow[]> = {
     }
   ],
 }
+
+// 已发布目录 CATA-0003 的首版历史快照：沿用既有结论，旧值保持原口径，只用于初始化历史流水。
+export const SEED_CATALOG_HISTORY: CatalogHistoryRecord[] = [
+  {
+    catalogId: 3,
+    revision: 1,
+    catalogVersion: '数据编目样例3',
+    fromStatus: '待审核',
+    toStatus: '已发布',
+    action: '发布目录',
+    metaSnapshot: [
+      {
+        id: 4,
+        status: '已生效',
+        pending: false,
+        abnormal: false,
+        条目编号: 'META-CATA-0003',
+        对象类型: '数据目录',
+        对象名称: '数据编目样例3',
+        属性键: '编目版本',
+        属性值: '数据编目样例3',
+        数据来源: '数据编目',
+        更新频率: '随目录发布',
+        版本变更: '数据编目样例3',
+      },
+    ],
+    changedAt: '2026-09-01 00:00:00',
+  },
+]
